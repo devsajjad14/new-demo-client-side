@@ -7,6 +7,17 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/solid'
 import { cn } from '@/lib/utils'
 
+const getOptimizedImageUrl = (url: string) => {
+  if (!url) return '' // Return empty string if url is not provided
+  try {
+    const urlObj = new URL(url, 'https://www.alumnihall.com')
+    const filename = urlObj.pathname.split('/').pop() || ''
+    return `https://www.alumnihall.com/prodimages/${filename}?w=128&q=75`
+  } catch {
+    return url
+  }
+}
+
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
@@ -82,9 +93,10 @@ export default function CartDetails() {
                 {/* Product Image */}
                 <div className='relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-gray-200/50 bg-gray-50 shadow-inner sm:h-32 sm:w-32'>
                   <Image
-                    src={item.image}
+                    src={getOptimizedImageUrl(item.image)}
                     alt={item.name}
                     fill
+                    unoptimized
                     className='object-cover object-center transition-transform group-hover:scale-105'
                     sizes='(max-width: 640px) 100vw, 33vw'
                   />

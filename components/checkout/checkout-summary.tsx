@@ -6,6 +6,17 @@ import { motion } from 'framer-motion'
 import Image from 'next/image'
 import { ShieldCheckIcon, LockClosedIcon } from '@heroicons/react/24/solid'
 
+const getOptimizedImageUrl = (url: string) => {
+  if (!url) return '' // Return empty string if url is not provided
+  try {
+    const urlObj = new URL(url, 'https://www.alumnihall.com')
+    const filename = urlObj.pathname.split('/').pop() || ''
+    return `https://www.alumnihall.com/prodimages/${filename}?w=80&q=75`
+  } catch {
+    return url
+  }
+}
+
 export default function CheckoutSummary() {
   const { items, getTotalItems, getTotalPrice, shippingCost } = useCartStore()
   const [isMounted, setIsMounted] = useState(false)
@@ -50,10 +61,11 @@ export default function CheckoutSummary() {
               <div className='flex gap-4'>
                 <div className='flex-shrink-0 relative'>
                   <Image
-                    src={item.image}
+                    src={getOptimizedImageUrl(item.image)}
                     alt={item.name}
                     width={80}
                     height={80}
+                    unoptimized
                     className='rounded-lg object-cover w-20 h-20 border border-gray-200/50'
                   />
                   <span className='absolute -top-2 -right-2 bg-black text-white text-xs font-medium rounded-full w-6 h-6 flex items-center justify-center'>
