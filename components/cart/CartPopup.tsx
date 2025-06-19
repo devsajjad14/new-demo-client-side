@@ -6,6 +6,17 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect } from 'react'
 
+const getOptimizedImageUrl = (url: string) => {
+  if (!url) return '' // Return empty string if url is not provided
+  try {
+    const urlObj = new URL(url, 'https://www.alumnihall.com')
+    const filename = urlObj.pathname.split('/').pop() || ''
+    return `https://www.alumnihall.com/prodimages/${filename}?w=96&q=75`
+  } catch {
+    return url
+  }
+}
+
 export function CartPopup() {
   const {
     isOpen,
@@ -75,10 +86,11 @@ export function CartPopup() {
                         <li key={item.id} className='flex py-6'>
                           <div className='h-24 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200'>
                             <Image
-                              src={item.image}
+                              src={getOptimizedImageUrl(item.image)}
                               alt={item.name}
                               width={96}
                               height={96}
+                              unoptimized
                               className='h-full w-full object-cover object-center'
                             />
                           </div>
