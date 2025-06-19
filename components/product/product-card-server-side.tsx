@@ -19,20 +19,17 @@ interface ProductCardProps {
   viewMode?: 'grid' | 'list'
 }
 
-// Helper function to construct optimized image URL for Next.js Image loader
-const alumnihallLoader = ({
-  src,
-  width,
-  quality = 80,
-}: {
-  src: string
-  width: number
-  quality?: number
-}) => {
-  // Ensure the src is always parsed relative to the CDN root
-  const url = new URL(src, 'https://www.alumnihall.com')
-  const filename = url.pathname.split('/').pop() || ''
-  return `https://www.alumnihall.com/prodimages/${filename}?w=${width}&q=${Math.min(quality, 80)}`
+// Helper function to construct optimized image URL
+const getOptimizedImageUrl = (url: string, width: number) => {
+  try {
+    const urlObj = new URL(url, 'https://www.alumnihall.com')
+    const filename = urlObj.pathname.split('/').pop() || ''
+    // Construct a fully qualified URL that Next.js can handle
+    return `https://www.alumnihall.com/prodimages/${filename}`
+  } catch {
+    // If URL parsing fails, return a safe fallback
+    return url
+  }
 }
 
 // Responsive image sizes configuration
@@ -69,14 +66,17 @@ export default function ProductCardServerSide({
             } w-full overflow-hidden`}
           >
             <Image
-              loader={alumnihallLoader}
-              src={product.MEDIUMPICTURE}
+              src={getOptimizedImageUrl(
+                product.MEDIUMPICTURE,
+                viewMode === 'list' ? 400 : 600
+              )}
               alt={product.NAME}
               fill
               sizes={getImageSizes()}
               className='object-contain rounded-lg transition-transform duration-300 group-hover:scale-105'
               quality={80}
               priority
+              unoptimized={process.env.NODE_ENV === 'development'}
             />
             <div className='absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300' />
           </div>
