@@ -20,14 +20,18 @@ interface ProductCardProps {
 }
 
 // Helper function to construct optimized image URL
-const getOptimizedImageUrl = (url: string, width: number, quality = 80) => {
-  try {
-    const urlObj = new URL(url)
-    const filename = urlObj.pathname.split('/').pop() || ''
-    return `https://www.alumnihall.com/prodimages/${filename}?w=${width}&q=${quality}&auto=format`
-  } catch {
-    return url
-  }
+const alumnihallLoader = ({
+  src,
+  width,
+  quality = 80,
+}: {
+  src: string
+  width: number
+  quality?: number
+}) => {
+  const url = new URL(src, 'https://www.alumnihall.com')
+  const filename = url.pathname.split('/').pop() || ''
+  return `https://www.alumnihall.com/prodimages/${filename}?w=${width}&q=${Math.min(quality, 80)}`
 }
 
 // Responsive image sizes configuration
@@ -64,10 +68,8 @@ export default function ProductCardServerSide({
             } w-full overflow-hidden`}
           >
             <Image
-              src={getOptimizedImageUrl(
-                product.MEDIUMPICTURE,
-                viewMode === 'list' ? 400 : 600
-              )}
+              loader={alumnihallLoader}
+              src={product.MEDIUMPICTURE}
               alt={product.NAME}
               fill
               sizes={getImageSizes()}
@@ -168,12 +170,4 @@ export default function ProductCardServerSide({
                   viewMode === 'list'
                     ? 'w-5 h-5 sm:w-6 sm:h-6'
                     : 'w-4 h-4 sm:w-5 sm:h-5'
-                }`}
-              />
-            </Button>
-          </Link>
-        </CardFooter>
-      </div>
-    </Card>
-  )
-}
+                }`
