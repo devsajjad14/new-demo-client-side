@@ -24,10 +24,8 @@ const getOptimizedImageUrl = (url: string, width: number) => {
   try {
     const urlObj = new URL(url, 'https://www.alumnihall.com')
     const filename = urlObj.pathname.split('/').pop() || ''
-    // Construct a fully qualified URL that Next.js can handle
-    return `https://www.alumnihall.com/prodimages/${filename}`
+    return `https://www.alumnihall.com/prodimages/${filename}?w=${width}&q=75`
   } catch {
-    // If URL parsing fails, return a safe fallback
     return url
   }
 }
@@ -74,9 +72,9 @@ export default function ProductCardServerSide({
               fill
               sizes={getImageSizes()}
               className='object-contain rounded-lg transition-transform duration-300 group-hover:scale-105'
-              quality={80}
+              quality={75}
               priority
-              unoptimized={process.env.NODE_ENV === 'development'}
+              unoptimized
             />
             <div className='absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300' />
           </div>
