@@ -19,7 +19,7 @@ interface ProductCardProps {
   viewMode?: 'grid' | 'list'
 }
 
-// Helper function to construct optimized image URL
+// Helper function to construct optimized image URL for Next.js Image loader
 const alumnihallLoader = ({
   src,
   width,
@@ -29,6 +29,7 @@ const alumnihallLoader = ({
   width: number
   quality?: number
 }) => {
+  // Ensure the src is always parsed relative to the CDN root
   const url = new URL(src, 'https://www.alumnihall.com')
   const filename = url.pathname.split('/').pop() || ''
   return `https://www.alumnihall.com/prodimages/${filename}?w=${width}&q=${Math.min(quality, 80)}`
@@ -170,4 +171,12 @@ export default function ProductCardServerSide({
                   viewMode === 'list'
                     ? 'w-5 h-5 sm:w-6 sm:h-6'
                     : 'w-4 h-4 sm:w-5 sm:h-5'
-                }`
+                }`}
+              />
+            </Button>
+          </Link>
+        </CardFooter>
+      </div>
+    </Card>
+  )
+}
