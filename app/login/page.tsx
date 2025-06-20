@@ -62,8 +62,8 @@ export default async function LoginPage({
 
           <div className='flex justify-center gap-3'>
             <SocialLogin provider='google' />
-            <SocialLogin provider='facebook' />
-            <SocialLogin provider='x' />
+            <SocialLogin provider='facebook' disabled />
+            <SocialLogin provider='x' disabled />
           </div>
         </div>
 

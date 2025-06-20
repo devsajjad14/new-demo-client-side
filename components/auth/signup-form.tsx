@@ -10,6 +10,7 @@ interface ActionState {
   error?: string
   message?: string
   callbackUrl?: string
+  redirect?: string
 }
 
 export function SignupForm({ callbackUrl }: { callbackUrl?: string }) {
@@ -34,6 +35,11 @@ export function SignupForm({ callbackUrl }: { callbackUrl?: string }) {
         router.push(loginUrl.toString() as string)
       }, 1500)
       return () => clearTimeout(timer)
+    }
+    
+    // Handle direct redirect after successful signup and auto-login
+    if (state?.redirect && !state?.error) {
+      router.push(state.redirect)
     }
   }, [state, router])
 
