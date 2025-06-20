@@ -13,11 +13,9 @@ import Link from 'next/link'
 import { signOut } from 'next-auth/react'
 import { useAuthStore } from '@/store/auth-store'
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 
 export default function UserButtonDesktop() {
   const { user, setUser } = useAuthStore()
-  const router = useRouter()
 
   useEffect(() => {
     async function loadSession() {
@@ -46,19 +44,6 @@ export default function UserButtonDesktop() {
     )
   }
 
-  const handleLogout = async () => {
-    try {
-      await signOut({ redirect: false })
-      router.push('/login')
-      router.refresh()
-      window.location.reload()
-    } catch (error) {
-      console.error('Logout failed:', error)
-      router.push('/login?error=logout_failed')
-      window.location.reload()
-    }
-  }
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -71,7 +56,7 @@ export default function UserButtonDesktop() {
         <DropdownMenuItem asChild>
           <Link href='/account'>Account</Link>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={handleLogout}>Sign Out</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => signOut()}>Sign Out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

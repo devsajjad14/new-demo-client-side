@@ -1,8 +1,16 @@
 // app/account/page.tsx
+import { auth } from '@/auth'
+import { redirect } from 'next/navigation'
 import { AccountCard, AccountSection } from '@/components/account/section'
 import { Icons } from '@/components/icons'
 
-export default function AccountPage() {
+export default async function AccountPage() {
+  const session = await auth()
+
+  if (!session) {
+    redirect('/login')
+  }
+
   return (
     <AccountSection
       title='Your Account Dashboard'

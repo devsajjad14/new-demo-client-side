@@ -20,7 +20,7 @@ export function LogoutButton() {
 
   return (
     <Button
-      onClick={handleLogout}
+      onClick={() => signOut()}
       variant='outline'
       className='hover:bg-destructive hover:text-destructive-foreground'
     >
