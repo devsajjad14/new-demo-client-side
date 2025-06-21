@@ -22,7 +22,7 @@ export const users = pgTable('users', {
   email: text('email').unique().notNull(),
   password: text('password'),
   emailVerified: timestamp('emailVerified', { mode: 'date' }),
-  image: text('image')
+  image: text('image'),
 })
 
 export const accounts = pgTable(
@@ -179,9 +179,7 @@ export const productAlternateImages = pgTable('product_alternate_images', {
   productId: integer('product_id')
     .notNull()
     .references(() => products.id, { onDelete: 'cascade' }),
-  smallAltPicture: text('small_alt_picture'),
-  mediumAltPicture: text('medium_alt_picture'),
-  largeAltPicture: text('large_alt_picture'),
+  AltImage: text('AltImage'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 })
@@ -372,16 +370,26 @@ export const orders = pgTable('orders', {
   guestEmail: text('guest_email'),
   status: text('status').notNull().default('pending'),
   paymentStatus: text('payment_status').notNull().default('pending'),
-  totalAmount: decimal('total_amount', { precision: 10, scale: 2 }).notNull().default('0'),
-  subtotal: decimal('subtotal', { precision: 10, scale: 2 }).notNull().default('0'),
+  totalAmount: decimal('total_amount', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
+  subtotal: decimal('subtotal', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
   tax: decimal('tax', { precision: 10, scale: 2 }).notNull().default('0'),
   taxRateId: uuid('tax_rate_id').references(() => taxRates.id),
-  shippingFee: decimal('shipping_fee', { precision: 10, scale: 2 }).notNull().default('0'),
-  discount: decimal('discount', { precision: 10, scale: 2 }).notNull().default('0'),
+  shippingFee: decimal('shipping_fee', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
+  discount: decimal('discount', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
   paymentMethod: text('payment_method'),
   shippingAddressId: uuid('shipping_address_id').references(() => addresses.id),
   billingAddressId: uuid('billing_address_id').references(() => addresses.id),
-  shippingMethodId: uuid('shipping_method_id').references(() => shippingMethods.id),
+  shippingMethodId: uuid('shipping_method_id').references(
+    () => shippingMethods.id
+  ),
   note: text('note'),
   createdAt: timestamp('created_at', { mode: 'date' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow(),
@@ -452,8 +460,14 @@ export const refunds = pgTable('refunds', {
     .references(() => orders.id, { onDelete: 'cascade' }),
   amount: decimal('amount', { precision: 10, scale: 2 }).notNull(),
   reason: text('reason').notNull(),
-  payment_status: text('payment_status', { enum: ['pending', 'approved', 'rejected', 'completed'] }).notNull().default('pending'),
-  refundMethod: text('refund_method', { enum: ['original_payment', 'store_credit', 'bank_transfer'] }).notNull(),
+  payment_status: text('payment_status', {
+    enum: ['pending', 'approved', 'rejected', 'completed'],
+  })
+    .notNull()
+    .default('pending'),
+  refundMethod: text('refund_method', {
+    enum: ['original_payment', 'store_credit', 'bank_transfer'],
+  }).notNull(),
   refundedBy: uuid('refunded_by').references(() => users.id),
   notes: text('notes'),
   attachments: text('attachments').array(), // URLs to attached files
@@ -463,35 +477,43 @@ export const refunds = pgTable('refunds', {
   refundTransactionId: text('refund_transaction_id'), // For payment gateway reference
   customerEmail: text('customer_email'),
   customerName: text('customer_name'),
-  refundItems: jsonb('refund_items').$type<{
-    productId: number
-    quantity: number
-    amount: number
-    reason: string
-  }[]>(),
+  refundItems: jsonb('refund_items').$type<
+    {
+      productId: number
+      quantity: number
+      amount: number
+      reason: string
+    }[]
+  >(),
   adminNotes: text('admin_notes'),
   refundPolicy: text('refund_policy').notNull().default('standard'),
   refundType: text('refund_type', { enum: ['full', 'partial'] }).notNull(),
   refundFee: integer('refund_fee').default(0), // in cents
   refundCurrency: text('refund_currency').notNull().default('USD'),
-  refundStatusHistory: jsonb('refund_status_history').$type<{
-    status: string
-    timestamp: string
-    note: string
-    updatedBy: string
-  }[]>(),
-  refundDocuments: jsonb('refund_documents').$type<{
-    type: string
-    url: string
-    name: string
-    uploadedAt: string
-  }[]>(),
-  refundCommunication: jsonb('refund_communication').$type<{
-    type: string
-    content: string
-    timestamp: string
-    sender: string
-  }[]>(),
+  refundStatusHistory: jsonb('refund_status_history').$type<
+    {
+      status: string
+      timestamp: string
+      note: string
+      updatedBy: string
+    }[]
+  >(),
+  refundDocuments: jsonb('refund_documents').$type<
+    {
+      type: string
+      url: string
+      name: string
+      uploadedAt: string
+    }[]
+  >(),
+  refundCommunication: jsonb('refund_communication').$type<
+    {
+      type: string
+      content: string
+      timestamp: string
+      sender: string
+    }[]
+  >(),
   refundAnalytics: jsonb('refund_analytics').$type<{
     processingTime: number
     customerSatisfaction: number
@@ -539,11 +561,11 @@ export const coupons = pgTable('coupons', {
   updatedBy: uuid('updated_by').references(() => users.id),
   metadata: jsonb('metadata').$type<Record<string, any>>(),
   analytics: jsonb('analytics').$type<{
-    totalDiscountsGiven: number;
-    totalRevenueImpact: number;
-    averageOrderValue: number;
-    redemptionRate: number;
-    lastUsedAt: string | null;
+    totalDiscountsGiven: number
+    totalRevenueImpact: number
+    averageOrderValue: number
+    redemptionRate: number
+    lastUsedAt: string | null
   }>(),
 })
 
@@ -577,13 +599,18 @@ export const shippingMethods = pgTable('shipping_methods', {
 })
 
 // Add relations for shipping methods
-export const shippingMethodsRelations = relations(shippingMethods, ({ many }) => ({
-  orders: many(orders),
-}))
+export const shippingMethodsRelations = relations(
+  shippingMethods,
+  ({ many }) => ({
+    orders: many(orders),
+  })
+)
 
 export const dataModeSettings = pgTable('data_mode_settings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  mode: text('mode', { enum: ['local', 'remote'] }).notNull().default('local'),
+  mode: text('mode', { enum: ['local', 'remote'] })
+    .notNull()
+    .default('local'),
   endpoints: jsonb('endpoints').$type<Record<string, string>>().default({}),
   createdAt: timestamp('created_at', { mode: 'date' }).defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).defaultNow(),
@@ -598,19 +625,22 @@ export const apiIntegrations = pgTable('api_integration', {
   apiSecret: text('api_secret').notNull(),
   token: text('token').notNull(),
   refreshToken: text('refresh_token').notNull(),
-  additionalFields: jsonb('additional_fields').$type<{
-    field1: string;
-    field2: string;
-    field3: string;
-    field4: string;
-    field5: string;
-  }>().notNull().default({
-    field1: '',
-    field2: '',
-    field3: '',
-    field4: '',
-    field5: '',
-  }),
+  additionalFields: jsonb('additional_fields')
+    .$type<{
+      field1: string
+      field2: string
+      field3: string
+      field4: string
+      field5: string
+    }>()
+    .notNull()
+    .default({
+      field1: '',
+      field2: '',
+      field3: '',
+      field4: '',
+      field5: '',
+    }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -624,8 +654,14 @@ export const discounts = pgTable('discounts', {
   description: text('description'),
   type: text('type').notNull(), // 'fixed' or 'percentage'
   value: decimal('value', { precision: 10, scale: 2 }).notNull(),
-  minPurchaseAmount: decimal('min_purchase_amount', { precision: 10, scale: 2 }),
-  maxDiscountAmount: decimal('max_discount_amount', { precision: 10, scale: 2 }),
+  minPurchaseAmount: decimal('min_purchase_amount', {
+    precision: 10,
+    scale: 2,
+  }),
+  maxDiscountAmount: decimal('max_discount_amount', {
+    precision: 10,
+    scale: 2,
+  }),
   startDate: timestamp('start_date', { mode: 'date' }).notNull(),
   endDate: timestamp('end_date', { mode: 'date' }).notNull(),
   usageLimit: integer('usage_limit'),

@@ -3,7 +3,6 @@
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 import {
   FiSettings,
   FiGlobe,
@@ -18,6 +17,7 @@ import { useEffect, useState, useRef } from 'react'
 import { getSettings, updateMultipleSettings, updateSetting } from '@/lib/actions/settings'
 import { toast, Toaster } from 'sonner'
 import Image from 'next/image'
+import { Button } from '@/components/ui/button'
 
 export default function GeneralSettings() {
   const [settings, setSettings] = useState({
@@ -39,6 +39,12 @@ export default function GeneralSettings() {
   const [isUploading, setIsUploading] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const faviconInputRef = useRef<HTMLInputElement>(null)
+
+  // Temporary storage for new images before upload
+  const [tempLogo, setTempLogo] = useState<File | null>(null)
+  const [tempFavicon, setTempFavicon] = useState<File | null>(null)
+  const [tempLogoPreview, setTempLogoPreview] = useState<string>('')
+  const [tempFaviconPreview, setTempFaviconPreview] = useState<string>('')
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -74,71 +80,6 @@ export default function GeneralSettings() {
     loadSettings()
   }, [])
 
-  const handleFileUpload = async (file: File, type: 'logo' | 'favicon') => {
-    if (!file) return
-
-    // Validate file size
-    const maxSize = type === 'logo' ? 2 * 1024 * 1024 : 1 * 1024 * 1024 // 2MB for logo, 1MB for favicon
-    if (file.size > maxSize) {
-      toast.error(`${type === 'logo' ? 'Logo' : 'Favicon'} size should be less than ${type === 'logo' ? '2MB' : '1MB'}`)
-      return
-    }
-
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Please upload a valid image file (JPEG, PNG, GIF, or WebP)')
-      return
-    }
-
-    setIsUploading(true)
-    try {
-      // Convert file to base64
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const base64String = e.target?.result as string
-        if (!base64String) {
-          toast.error('Failed to read file')
-          return
-        }
-
-        // Update the setting in the database
-        const result = await updateSetting(type, base64String)
-        
-        if (result.success) {
-          setSettings(prev => ({ ...prev, [type]: base64String }))
-          toast.success(`${type === 'logo' ? 'Logo' : 'Favicon'} uploaded successfully`)
-        } else {
-          toast.error(result.error || `Failed to upload ${type}`)
-        }
-      }
-      reader.onerror = () => {
-        toast.error('Failed to read file')
-      }
-      reader.readAsDataURL(file)
-    } catch (error) {
-      console.error(`Error uploading ${type}:`, error)
-      toast.error(`Failed to upload ${type}`)
-    } finally {
-      setIsUploading(false)
-    }
-  }
-
-  const handleRemoveImage = async (type: 'logo' | 'favicon') => {
-    try {
-      const result = await updateSetting(type, '')
-      if (result.success) {
-        setSettings(prev => ({ ...prev, [type]: '' }))
-        toast.success(`${type === 'logo' ? 'Logo' : 'Favicon'} removed successfully`)
-      } else {
-        toast.error(result.error || `Failed to remove ${type}`)
-      }
-    } catch (error) {
-      console.error(`Error removing ${type}:`, error)
-      toast.error(`Failed to remove ${type}`)
-    }
-  }
-
   const handleLogoClick = () => {
     logoInputRef.current?.click()
   }
@@ -147,25 +88,164 @@ export default function GeneralSettings() {
     faviconInputRef.current?.click()
   }
 
+  const handleFileUpload = async (file: File, type: 'logo' | 'favicon') => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('type', type)
+      
+      const response = await fetch('/api/upload/site-asset', {
+        method: 'POST',
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to upload ${type}`)
+      }
+      
+      const result = await response.json()
+      
+      // Update the settings with the new URL
+      setSettings(prev => ({
+        ...prev,
+        [type]: result.url
+      }))
+      
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} uploaded successfully!`)
+    } catch (error) {
+      console.error(`Error uploading ${type}:`, error)
+      toast.error(`Failed to upload ${type}`)
+    }
+  }
+
+  const handleRemoveImage = async (type: 'logo' | 'favicon') => {
+    try {
+      const currentUrl = settings[type]
+      if (!currentUrl) return
+      
+      // Extract filename from URL
+      const urlParts = currentUrl.split('/')
+      const filename = urlParts[urlParts.length - 1]
+      
+      // Delete from Vercel Blob
+      const response = await fetch(`/api/upload/site-asset?filename=${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+      })
+      
+      if (!response.ok) {
+        console.warn(`Failed to delete ${type} from blob storage`)
+      }
+      
+      // Update local state
+      setSettings(prev => ({
+        ...prev,
+        [type]: ''
+      }))
+      
+      toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} removed successfully!`)
+    } catch (error) {
+      console.error(`Error removing ${type}:`, error)
+      toast.error(`Failed to remove ${type}`)
+    }
+  }
+
   const handleSave = async () => {
     setIsSaving(true)
+    setIsUploading(false)
+    
     try {
+      // Upload images first if there are new ones
+      let logoUrl = settings.logo
+      let faviconUrl = settings.favicon
+      
+      if (tempLogo) {
+        setIsUploading(true)
+        const formData = new FormData()
+        formData.append('file', tempLogo)
+        formData.append('type', 'logo')
+        
+        const response = await fetch('/api/upload/site-asset', {
+          method: 'POST',
+          body: formData,
+        })
+        
+        if (!response.ok) {
+          throw new Error('Failed to upload logo')
+        }
+        
+        const result = await response.json()
+        logoUrl = result.url
+        setIsUploading(false)
+      }
+      
+      if (tempFavicon) {
+        setIsUploading(true)
+        const formData = new FormData()
+        formData.append('file', tempFavicon)
+        formData.append('type', 'favicon')
+        
+        const response = await fetch('/api/upload/site-asset', {
+          method: 'POST',
+          body: formData,
+        })
+        
+        if (!response.ok) {
+          throw new Error('Failed to upload favicon')
+        }
+        
+        const result = await response.json()
+        faviconUrl = result.url
+        setIsUploading(false)
+      }
+      
+      // Update settings with new image URLs
+      const updatedSettings = {
+        ...settings,
+        logo: logoUrl,
+        favicon: faviconUrl,
+      }
+      
+      // Save settings using the original working function
       const result = await updateMultipleSettings({
-        siteTitle: settings.siteTitle,
-        description: settings.description,
-        keywords: settings.keywords,
-        primaryColor: settings.primaryColor,
-        secondaryColor: settings.secondaryColor,
-        accentColor: settings.accentColor,
-        storeName: settings.storeName,
-        storeEmail: settings.storeEmail,
-        storePhone: settings.storePhone,
-        storeAddress: settings.storeAddress,
-        logo: settings.logo,
-        favicon: settings.favicon,
+        siteTitle: updatedSettings.siteTitle,
+        description: updatedSettings.description,
+        keywords: updatedSettings.keywords,
+        primaryColor: updatedSettings.primaryColor,
+        secondaryColor: updatedSettings.secondaryColor,
+        accentColor: updatedSettings.accentColor,
+        storeName: updatedSettings.storeName,
+        storeEmail: updatedSettings.storeEmail,
+        storePhone: updatedSettings.storePhone,
+        storeAddress: updatedSettings.storeAddress,
+        logo: updatedSettings.logo,
+        favicon: updatedSettings.favicon,
       })
 
       if (result.success) {
+        // Update local state
+        setSettings(updatedSettings)
+        
+        // Clean up temporary files and previews
+        if (tempLogo) {
+          URL.revokeObjectURL(tempLogoPreview)
+          setTempLogo(null)
+          setTempLogoPreview('')
+        }
+        
+        if (tempFavicon) {
+          URL.revokeObjectURL(tempFaviconPreview)
+          setTempFavicon(null)
+          setTempFaviconPreview('')
+        }
+        
+        // Clear file inputs
+        if (logoInputRef.current) {
+          logoInputRef.current.value = ''
+        }
+        if (faviconInputRef.current) {
+          faviconInputRef.current.value = ''
+        }
+        
         toast.success('Settings saved successfully', {
           description: 'Your changes have been saved and will be reflected immediately.',
           duration: 3000,
@@ -216,6 +296,7 @@ export default function GeneralSettings() {
       })
     } finally {
       setIsSaving(false)
+      setIsUploading(false)
     }
   }
 
@@ -241,13 +322,18 @@ export default function GeneralSettings() {
         </div>
         <Button
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={isSaving || isUploading}
           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
         >
           {isSaving ? (
             <div className="flex items-center gap-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
               <span>Saving...</span>
+            </div>
+          ) : isUploading ? (
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <span>Uploading Images...</span>
             </div>
           ) : (
             'Save Changes'
@@ -257,11 +343,9 @@ export default function GeneralSettings() {
 
       {/* Branding Section */}
       <Card className='p-8 border-none shadow-xl bg-white dark:bg-gray-800 rounded-2xl backdrop-blur-sm'>
-        <div className='flex items-center gap-3 mb-8'>
-          <div className='p-3 rounded-xl bg-indigo-100 dark:bg-indigo-900/30'>
-            <FiImage className='w-6 h-6 text-indigo-600 dark:text-indigo-400' />
-          </div>
-          <h2 className='text-2xl font-semibold'>Branding</h2>
+        <div className='flex items-center gap-2 mb-6'>
+          <FiSettings className='w-6 h-6 text-blue-600 dark:text-blue-400' />
+          <h1 className='text-2xl font-bold text-gray-900 dark:text-white'>General Settings</h1>
         </div>
         <div className='grid grid-cols-1 md:grid-cols-2 gap-8'>
           {/* Logo Upload */}
@@ -272,17 +356,22 @@ export default function GeneralSettings() {
                 onClick={handleLogoClick}
                 className='w-32 h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex items-center justify-center bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700/70 transition-colors cursor-pointer relative overflow-hidden'
               >
-                {settings.logo ? (
+                {(tempLogoPreview || settings.logo) ? (
                   <div className="relative w-full h-full">
                     <img
-                      src={settings.logo}
+                      src={tempLogoPreview || settings.logo}
                       alt="Store Logo"
                       className="w-full h-full object-contain p-2"
                     />
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleRemoveImage('logo')
+                        setTempLogo(null)
+                        setTempLogoPreview('')
+                        setSettings(prev => ({ ...prev, logo: '' }))
+                        if (logoInputRef.current) {
+                          logoInputRef.current.value = ''
+                        }
                       }}
                       className="absolute -top-1 -right-1 text-red-500 hover:text-red-600"
                     >
@@ -298,28 +387,41 @@ export default function GeneralSettings() {
                   </div>
                 )}
               </div>
-              <input
-                type="file"
-                ref={logoInputRef}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) {
-                    // Create a temporary URL for immediate preview
-                    const tempUrl = URL.createObjectURL(file)
-                    setSettings(prev => ({ ...prev, logo: tempUrl }))
-                    // Then handle the actual upload
-                    handleFileUpload(file, 'logo')
-                  }
-                }}
-                accept="image/*"
-                className="hidden"
-              />
               <div className='flex-1'>
                 <p className='text-sm text-gray-500 dark:text-gray-400'>
                   Recommended size: 200x200px. Max file size: 2MB
                 </p>
               </div>
             </div>
+            <input
+              type="file"
+              ref={logoInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  // Validate file size
+                  const maxSize = 2 * 1024 * 1024 // 2MB for logo
+                  if (file.size > maxSize) {
+                    toast.error('Logo size should be less than 2MB')
+                    return
+                  }
+
+                  // Validate file type
+                  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+                  if (!allowedTypes.includes(file.type)) {
+                    toast.error('Please upload a valid image file (JPEG, PNG, GIF, or WebP)')
+                    return
+                  }
+
+                  // Store file temporarily and create preview
+                  setTempLogo(file)
+                  const tempUrl = URL.createObjectURL(file)
+                  setTempLogoPreview(tempUrl)
+                }
+              }}
+              accept="image/*"
+              className="hidden"
+            />
           </div>
 
           {/* Favicon Upload */}
@@ -330,17 +432,22 @@ export default function GeneralSettings() {
                 onClick={handleFaviconClick}
                 className='w-16 h-16 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex items-center justify-center bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700/70 transition-colors cursor-pointer relative overflow-hidden'
               >
-                {settings.favicon ? (
+                {(tempFaviconPreview || settings.favicon) ? (
                   <div className="relative w-full h-full">
                     <img
-                      src={settings.favicon}
+                      src={tempFaviconPreview || settings.favicon}
                       alt="Favicon"
                       className="w-full h-full object-contain p-1"
                     />
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleRemoveImage('favicon')
+                        setTempFavicon(null)
+                        setTempFaviconPreview('')
+                        setSettings(prev => ({ ...prev, favicon: '' }))
+                        if (faviconInputRef.current) {
+                          faviconInputRef.current.value = ''
+                        }
                       }}
                       className="absolute -top-1 -right-1 text-red-500 hover:text-red-600"
                     >
@@ -356,28 +463,41 @@ export default function GeneralSettings() {
                   </div>
                 )}
               </div>
-              <input
-                type="file"
-                ref={faviconInputRef}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) {
-                    // Create a temporary URL for immediate preview
-                    const tempUrl = URL.createObjectURL(file)
-                    setSettings(prev => ({ ...prev, favicon: tempUrl }))
-                    // Then handle the actual upload
-                    handleFileUpload(file, 'favicon')
-                  }
-                }}
-                accept="image/*"
-                className="hidden"
-              />
               <div className='flex-1'>
                 <p className='text-sm text-gray-500 dark:text-gray-400'>
                   Recommended size: 32x32px. Max file size: 1MB
                 </p>
               </div>
             </div>
+            <input
+              type="file"
+              ref={faviconInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  // Validate file size
+                  const maxSize = 1 * 1024 * 1024 // 1MB for favicon
+                  if (file.size > maxSize) {
+                    toast.error('Favicon size should be less than 1MB')
+                    return
+                  }
+
+                  // Validate file type
+                  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+                  if (!allowedTypes.includes(file.type)) {
+                    toast.error('Please upload a valid image file (JPEG, PNG, GIF, or WebP)')
+                    return
+                  }
+
+                  // Store file temporarily and create preview
+                  setTempFavicon(file)
+                  const tempUrl = URL.createObjectURL(file)
+                  setTempFaviconPreview(tempUrl)
+                }
+              }}
+              accept="image/*"
+              className="hidden"
+            />
           </div>
         </div>
       </Card>
@@ -386,7 +506,7 @@ export default function GeneralSettings() {
       <Card className='p-8 border-none shadow-xl bg-white dark:bg-gray-800 rounded-2xl backdrop-blur-sm'>
         <div className='flex items-center gap-3 mb-8'>
           <div className='p-3 rounded-xl bg-blue-100 dark:bg-blue-900/30'>
-            <FiSettings className='w-6 h-6 text-blue-600 dark:text-blue-400' />
+            <FiGlobe className='w-6 h-6 text-blue-600 dark:text-blue-400' />
           </div>
           <h2 className='text-2xl font-semibold'>Site Information</h2>
         </div>

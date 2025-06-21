@@ -55,9 +55,7 @@ export async function createProduct(data: {
     available: boolean
   }[]
   alternateImages: {
-    smallAltPicture: string
-    mediumAltPicture: string
-    largeAltPicture: string
+    AltImage: string
   }[]
 }): Promise<ProductResponse> {
   try {
@@ -125,9 +123,7 @@ export async function createProduct(data: {
       await db.insert(productAlternateImages).values(
         data.alternateImages.map(image => ({
           productId: product.id,
-          smallAltPicture: image.smallAltPicture,
-          mediumAltPicture: image.mediumAltPicture,
-          largeAltPicture: image.largeAltPicture,
+          AltImage: image.AltImage,
         }))
       )
     }
@@ -270,9 +266,7 @@ export async function updateProduct(id: string, data: {
     available: boolean
   }[]
   alternateImages: {
-    smallAltPicture: string
-    mediumAltPicture: string
-    largeAltPicture: string
+    AltImage: string
   }[]
 }): Promise<ProductResponse> {
   try {
@@ -351,9 +345,7 @@ export async function updateProduct(id: string, data: {
       await db.insert(productAlternateImages).values(
         data.alternateImages.map(image => ({
           productId: updatedProduct.id,
-          smallAltPicture: image.smallAltPicture,
-          mediumAltPicture: image.mediumAltPicture,
-          largeAltPicture: image.largeAltPicture,
+          AltImage: image.AltImage,
         }))
       )
     }

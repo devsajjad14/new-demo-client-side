@@ -3,8 +3,6 @@ import { db } from '@/lib/db'
 import { users, userProfiles, adminUsers } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
-import { writeFile } from 'fs/promises'
-import { join } from 'path'
 
 // GET all admin users
 export async function GET() {
@@ -45,26 +43,10 @@ export async function POST(request: Request) {
     const role = formData.get('role') as string
     const status = formData.get('status') as string
     const address = formData.get('address') as string
-    const image = formData.get('image') as File | null
+    const image = formData.get('image') as string | null
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
-
-    // Handle image upload if present
-    let imagePath = null
-    if (image && image instanceof File) {
-      const bytes = await image.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      
-      // Create unique filename
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`
-      const filename = `${uniqueSuffix}-${image.name}`
-      const uploadDir = join(process.cwd(), 'public', 'images', 'site')
-      
-      // Ensure directory exists
-      await writeFile(join(uploadDir, filename), buffer)
-      imagePath = `/images/site/${filename}`
-    }
 
     // Create admin user
     const [adminUser] = await db.insert(adminUsers).values({
@@ -74,7 +56,7 @@ export async function POST(request: Request) {
       role,
       status,
       address,
-      profileImage: imagePath,
+      profileImage: image,
       phoneNumber,
     }).returning()
 
@@ -115,23 +97,7 @@ export async function PUT(request: Request) {
     const role = formData.get('role') as string
     const status = formData.get('status') as string
     const address = formData.get('address') as string
-    const image = formData.get('image') as File | null
-
-    // Handle image upload if present
-    let imagePath = undefined
-    if (image && image instanceof File) {
-      const bytes = await image.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      
-      // Create unique filename
-      const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`
-      const filename = `${uniqueSuffix}-${image.name}`
-      const uploadDir = join(process.cwd(), 'public', 'images', 'site')
-      
-      // Ensure directory exists
-      await writeFile(join(uploadDir, filename), buffer)
-      imagePath = `/images/site/${filename}`
-    }
+    const image = formData.get('image') as string | null
 
     // Update admin user
     await db
@@ -142,7 +108,7 @@ export async function PUT(request: Request) {
         role,
         status,
         address,
-        ...(imagePath && { profileImage: imagePath }),
+        ...(image && { profileImage: image }),
         phoneNumber,
         updatedAt: new Date(),
       })
@@ -174,11 +140,13 @@ export async function PUT(request: Request) {
   }
 }
 
-// DELETE admin user (soft delete)
+// DELETE admin user (hard delete)
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
+
+    console.log('DELETE request received for user ID:', id)
 
     if (!id) {
       return NextResponse.json(
@@ -187,20 +155,50 @@ export async function DELETE(request: Request) {
       )
     }
 
-    // Soft delete by updating the status to 'deleted' in adminUsers table
-    await db
-      .update(adminUsers)
-      .set({
-        status: 'deleted',
-        updatedAt: new Date(),
-      })
+    // Check if user exists before deleting
+    const existingUser = await db
+      .select()
+      .from(adminUsers)
       .where(eq(adminUsers.id, id))
 
-    return NextResponse.json({ success: true })
+    console.log('User found before delete:', existingUser.length > 0)
+
+    if (existingUser.length === 0) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
+    // Hard delete by removing the user from adminUsers table
+    const deleteResult = await db
+      .delete(adminUsers)
+      .where(eq(adminUsers.id, id))
+      .returning()
+
+    console.log('Delete result:', deleteResult)
+
+    // Verify the user was actually deleted
+    const userAfterDelete = await db
+      .select()
+      .from(adminUsers)
+      .where(eq(adminUsers.id, id))
+
+    console.log('User found after delete:', userAfterDelete.length > 0)
+
+    if (userAfterDelete.length > 0) {
+      console.error('User still exists after delete operation')
+      return NextResponse.json(
+        { error: 'Failed to delete user - user still exists in database' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true, deletedUser: deleteResult[0] })
   } catch (error) {
     console.error('Error deleting user:', error)
     return NextResponse.json(
-      { error: 'Failed to delete user' },
+      { error: 'Failed to delete user', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

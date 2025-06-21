@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { use } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,9 +12,20 @@ import { getAttributes } from '@/lib/actions/attributes'
 import { getBrands } from '@/lib/actions/brands'
 import { useRouter } from 'next/navigation'
 import { getProduct, updateProduct } from '@/lib/actions/products'
-import { ProductImageUpload } from '@/components/ProductImageUpload'
+import { ProductImageUpload, ProductImageUploadRef } from '@/components/ProductImageUpload'
 import { VariantImageUpload } from '@/components/VariantImageUpload'
 import { Label } from '@/components/ui/label'
+
+interface ImageSet {
+  large: string
+  medium: string
+  small: string
+}
+
+interface ProductImages {
+  main: ImageSet | null
+  alternates: string[]
+}
 
 interface ProductVariant {
   id: string
@@ -88,7 +99,10 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
   console.log('Resolved params:', resolvedParams)
 
   const [variants, setVariants] = useState<ProductVariant[]>([])
-  const [images, setImages] = useState<string[]>([])
+  const [productImages, setProductImages] = useState<ProductImages>({
+    main: null,
+    alternates: [],
+  })
   const [options, setOptions] = useState<ProductOption[]>([])
   const [attributes, setAttributes] = useState<Attribute[]>([])
   const [currentOption, setCurrentOption] = useState<ProductOption>({
@@ -129,6 +143,7 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
   const [brands, setBrands] = useState<Brand[]>([])
 
   const router = useRouter()
+  const imageUploadRef = useRef<ProductImageUploadRef>(null)
 
   // Add loading state for save button
   const [isSaving, setIsSaving] = useState(false)
@@ -187,11 +202,18 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
             }
             if (product.alternateImages && product.alternateImages.length > 0) {
               const altImages = product.alternateImages
-                .map(img => img.largeAltPicture)
+                .map(img => img.AltImage)
                 .filter((img): img is string => img !== null)
               allImages.push(...altImages)
             }
-            setImages(allImages)
+            setProductImages({
+              main: product.largePicture ? {
+                large: product.largePicture,
+                medium: product.mediumPicture || product.largePicture,
+                small: product.smallPicture || product.largePicture,
+              } : null,
+              alternates: product.alternateImages?.map(img => img.AltImage).filter((img): img is string => img !== null) || [],
+            })
 
             // Set variants and options if they exist
             if (product.variations && product.variations.length > 0) {
@@ -372,13 +394,20 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
         // Add alternate images if they exist
         if (product.alternateImages && product.alternateImages.length > 0) {
           const altImages = product.alternateImages
-            .map(img => img.largeAltPicture)
+            .map(img => img.AltImage)
             .filter((img): img is string => img !== null)
           allImages.push(...altImages)
         }
 
         console.log('Setting images:', allImages)
-        setImages(allImages)
+        setProductImages({
+          main: product.largePicture ? {
+            large: product.largePicture,
+            medium: product.mediumPicture || product.largePicture,
+            small: product.smallPicture || product.largePicture,
+          } : null,
+          alternates: product.alternateImages?.map(img => img.AltImage).filter((img): img is string => img !== null) || [],
+        })
 
         // Set variants and options
         if (product.variations && product.variations.length > 0) {
@@ -489,7 +518,10 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
       const newImages = Array.from(files).map((file) =>
         URL.createObjectURL(file)
       )
-      setImages((prev) => [...prev, ...newImages])
+      setProductImages(prev => ({
+        ...prev,
+        alternates: [...prev.alternates, ...newImages],
+      }))
     }
   }
 
@@ -532,6 +564,13 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
   const handleSubmit = async () => {
     setIsSaving(true)
     try {
+      // Upload images first and get the result
+      let finalImages = productImages
+      if (imageUploadRef.current) {
+        finalImages = await imageUploadRef.current.uploadAllImages()
+        setProductImages(finalImages)
+      }
+
       // Find the selected brand
       const selectedBrand = brands.find(brand => brand.id.toString() === formData.brand)
 
@@ -542,9 +581,9 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
         quantityAvailable: parseInt(formData.quantity),
         onSale: formData.status === 'active' ? 'Y' : 'N',
         isNew: 'N',
-        smallPicture: images[0] || '',
-        mediumPicture: images[0] || '',
-        largePicture: images[0] || '',
+        smallPicture: finalImages.main?.small || '',
+        mediumPicture: finalImages.main?.medium || '',
+        largePicture: finalImages.main?.large || '',
         department: formData.category || '',
         type: formData.type || '',
         subType: '',
@@ -567,8 +606,8 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
         stockQuantity: parseInt(formData.quantity),
         variations: variants.map(variant => ({
           skuId: parseInt(variant.id) || Math.floor(Math.random() * 1000000),
-          color: variant.combinations[0] || variant.title,
-          attr1Alias: variant.combinations[0] || variant.title,
+          color: variant.combinations[0] || '',
+          attr1Alias: variant.combinations[0] || '',
           hex: '#000000',
           size: variant.combinations[1] || 'One Size',
           subSize: null,
@@ -578,10 +617,8 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
           barcode: variant.barcode || formData.barcode || '',
           available: variant.available || false
         })),
-        alternateImages: images.slice(1).map(image => ({
-          smallAltPicture: image,
-          mediumAltPicture: image,
-          largeAltPicture: image
+        alternateImages: finalImages.alternates.map(image => ({
+          AltImage: image
         }))
       }
 
@@ -825,17 +862,9 @@ export default function EditProductPage({ params }: { params: Promise<{ styleId:
               <h3 className="text-lg font-medium">Media</h3>
               <ProductImageUpload
                 styleId={parseInt(resolvedParams.styleId)}
-                onImagesChange={(images) => {
-                  setImages(images)
-                  // Update form data with image paths
-                  setFormData(prev => ({
-                    ...prev,
-                    smallPicture: images[0] || '',
-                    mediumPicture: images[0] || '',
-                    largePicture: images[0] || '',
-                  }))
-                }}
-                initialImages={images}
+                onImagesChange={setProductImages}
+                initialImages={productImages}
+                ref={imageUploadRef}
               />
             </div>
           </Card>

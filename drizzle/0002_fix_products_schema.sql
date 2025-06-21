@@ -58,9 +58,7 @@ CREATE TABLE product_variations (
 CREATE TABLE product_alternate_images (
     id SERIAL PRIMARY KEY,
     product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    small_alt_picture TEXT,
-    medium_alt_picture TEXT,
-    large_alt_picture TEXT,
+    AltImage TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ); 

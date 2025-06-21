@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,9 +11,20 @@ import { getAttributes } from '@/lib/actions/attributes'
 import { getBrands } from '@/lib/actions/brands'
 import { useRouter } from 'next/navigation'
 import { createProduct } from '@/lib/actions/products'
-import { ProductImageUpload } from '@/components/ProductImageUpload'
+import { ProductImageUpload, ProductImageUploadRef } from '@/components/ProductImageUpload'
 import { VariantImageUpload } from '@/components/VariantImageUpload'
 import { Label } from '@/components/ui/label'
+
+interface ImageSet {
+  large: string
+  medium: string
+  small: string
+}
+
+interface ProductImages {
+  main: ImageSet | null
+  alternates: string[]
+}
 
 interface ProductVariant {
   id: string
@@ -89,7 +100,10 @@ interface TaxonomyItem {
 
 export default function AddProductPage() {
   const [variants, setVariants] = useState<ProductVariant[]>([])
-  const [images, setImages] = useState<string[]>([])
+  const [productImages, setProductImages] = useState<ProductImages>({
+    main: null,
+    alternates: [],
+  })
   const [options, setOptions] = useState<ProductOption[]>([])
   const [attributes, setAttributes] = useState<Attribute[]>([])
   const [currentOption, setCurrentOption] = useState<ProductOption>({
@@ -132,9 +146,7 @@ export default function AddProductPage() {
   const [brands, setBrands] = useState<Brand[]>([])
 
   const router = useRouter()
-
-  // Add loading state
-  const [isUploading, setIsUploading] = useState(false)
+  const imageUploadRef = useRef<ProductImageUploadRef>(null)
 
   // Add loading state for save button
   const [isSaving, setIsSaving] = useState(false)
@@ -178,16 +190,6 @@ export default function AddProductPage() {
   ) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
-  }
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files) {
-      const newImages = Array.from(files).map((file) =>
-        URL.createObjectURL(file)
-      )
-      setImages((prev) => [...prev, ...newImages])
-    }
   }
 
   const startEditing = () => {
@@ -285,6 +287,13 @@ export default function AddProductPage() {
         return
       }
 
+      // Upload images first and get the result
+      let finalImages = productImages
+      if (imageUploadRef.current) {
+        finalImages = await imageUploadRef.current.uploadAllImages()
+        setProductImages(finalImages)
+      }
+
       // Find the selected brand
       const selectedBrand = brands.find(brand => brand.id.toString() === formData.brand)
 
@@ -314,9 +323,9 @@ export default function AddProductPage() {
         quantityAvailable: parseInt(formData.quantity) || 0,
         onSale: formData.status === 'active' ? 'Y' : 'N',
         isNew: 'Y',
-        smallPicture: images[0] || '',
-        mediumPicture: images[0] || '',
-        largePicture: images[0] || '',
+        smallPicture: finalImages.main?.small || '',
+        mediumPicture: finalImages.main?.medium || '',
+        largePicture: finalImages.main?.large || '',
         department: formData.category || '',
         type: formData.type || '',
         subType: '',
@@ -364,13 +373,11 @@ export default function AddProductPage() {
             colorImage: hasColorOption ? existingVariant?.colorImage || '' : '',
             sku: existingVariant?.sku || '',
             barcode: existingVariant?.barcode || formData.barcode || '',
-            available: existingVariant ? existingVariant.available : false,
+            available: existingVariant ? existingVariant.available || false : false,
           }
         }),
-        alternateImages: images.slice(1).map((image) => ({
-          smallAltPicture: image,
-          mediumAltPicture: image,
-          largeAltPicture: image,
+        alternateImages: finalImages.alternates.map((image) => ({
+          AltImage: image,
         })),
       }
 
@@ -550,31 +557,11 @@ export default function AddProductPage() {
           <Card className="p-8 rounded-xl shadow-md bg-white">
             <div className="space-y-4">
               {/* Media Section */}
-              {isUploading ? (
-                <div className='flex items-center justify-center p-8 border-2 border-dashed border-gray-200 rounded-lg'>
-                  <div className='text-center'>
-                    <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2'></div>
-                    <p className='text-sm text-gray-500'>
-                      Processing images...
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <ProductImageUpload
-                  styleId={parseInt(formData.styleId)}
-                  onImagesChange={(images) => {
-                    setImages(images)
-                    setFormData((prev) => ({
-                      ...prev,
-                      smallPicture: images[0] || '',
-                      mediumPicture: images[0] || '',
-                      largePicture: images[0] || '',
-                    }))
-                  }}
-                  onUploadStart={() => setIsUploading(true)}
-                  onUploadComplete={() => setIsUploading(false)}
-                />
-              )}
+              <ProductImageUpload
+                styleId={parseInt(formData.styleId)}
+                onImagesChange={setProductImages}
+                ref={imageUploadRef}
+              />
             </div>
           </Card>
 

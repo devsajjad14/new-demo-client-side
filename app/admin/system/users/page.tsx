@@ -55,16 +55,26 @@ interface UserFormData {
 const ImageUpload = ({ 
   image, 
   onImageChange, 
-  className = '' 
+  className = '',
+  tempImage,
+  onTempImageChange
 }: { 
   image: string | File | null | undefined, 
   onImageChange: (file: File | null) => void,
-  className?: string 
+  className?: string,
+  tempImage?: File | null,
+  onTempImageChange?: (file: File | null) => void
 }) => {
   const [preview, setPreview] = useState<string | null>(null)
 
   useEffect(() => {
-    if (image instanceof File) {
+    if (tempImage) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreview(reader.result as string)
+      }
+      reader.readAsDataURL(tempImage)
+    } else if (image instanceof File) {
       const reader = new FileReader()
       reader.onloadend = () => {
         setPreview(reader.result as string)
@@ -75,7 +85,7 @@ const ImageUpload = ({
     } else {
       setPreview(null)
     }
-  }, [image])
+  }, [image, tempImage])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -88,8 +98,23 @@ const ImageUpload = ({
         toast.error('Please upload an image file')
         return
       }
-      onImageChange(file)
+      
+      // Store temporarily instead of immediately setting
+      if (onTempImageChange) {
+        onTempImageChange(file)
+      } else {
+        onImageChange(file)
+      }
     }
+  }
+
+  const handleRemove = () => {
+    if (onTempImageChange) {
+      onTempImageChange(null)
+    } else {
+      onImageChange(null)
+    }
+    setPreview(null)
   }
 
   return (
@@ -127,7 +152,7 @@ const ImageUpload = ({
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => onImageChange(null)}
+                onClick={handleRemove}
                 className="h-10 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
               >
                 <FiXCircle className="w-4 h-4 mr-2" />
@@ -173,6 +198,11 @@ const EditModal = ({
     address: '',
   })
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+
+  // Temporary storage for profile image before upload
+  const [tempEditImage, setTempEditImage] = useState<File | null>(null)
+  const [tempEditPreview, setTempEditPreview] = useState<string>('')
 
   useEffect(() => {
     if (user) {
@@ -185,6 +215,9 @@ const EditModal = ({
         status: user.status || 'active',
         address: user.address || '',
       })
+      // Clear temporary image when user changes
+      setTempEditImage(null)
+      setTempEditPreview('')
     }
   }, [user])
 
@@ -196,13 +229,61 @@ const EditModal = ({
 
     try {
       setIsUpdating(true)
-      await onUpdate(editFormData)
+      setIsUploading(false)
+      
+      // Upload profile image to Vercel Blob if there's a temporary image
+      let imageUrl = editFormData.image as string || null
+      if (tempEditImage) {
+        setIsUploading(true)
+        const formDataToUpload = new FormData()
+        formDataToUpload.append('file', tempEditImage)
+        
+        const uploadResponse = await fetch('/api/upload/user-profile', {
+          method: 'POST',
+          body: formDataToUpload,
+        })
+        
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload profile image')
+        }
+        
+        const uploadResult = await uploadResponse.json()
+        imageUrl = uploadResult.url
+        setIsUploading(false)
+      }
+
+      // Create form data for update
+      const formDataToSend = new FormData()
+      Object.entries(editFormData).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && key !== 'image') {
+          formDataToSend.append(key, value)
+        }
+      })
+      
+      // Add the uploaded image URL
+      if (imageUrl) {
+        formDataToSend.append('image', imageUrl)
+      }
+
+      // Call the parent update function with the updated data
+      await onUpdate({
+        ...editFormData,
+        image: imageUrl
+      })
+      
+      // Clean up temporary image
+      if (tempEditImage) {
+        setTempEditImage(null)
+        setTempEditPreview('')
+      }
+      
       onClose()
     } catch (error) {
       console.error('Error updating user:', error)
       toast.error('Failed to update user')
     } finally {
       setIsUpdating(false)
+      setIsUploading(false)
     }
   }
 
@@ -241,6 +322,8 @@ const EditModal = ({
             <ImageUpload
               image={editFormData.image}
               onImageChange={(file) => setEditFormData({ ...editFormData, image: file })}
+              tempImage={tempEditImage}
+              onTempImageChange={(file) => setTempEditImage(file)}
               className="md:col-span-2"
             />
 
@@ -345,13 +428,18 @@ const EditModal = ({
             </Button>
             <Button
               onClick={handleUpdate}
-              disabled={isUpdating}
+              disabled={isUpdating || isUploading}
               className='h-12 px-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
             >
               {isUpdating ? (
                 <div className='flex items-center gap-2'>
                   <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-white'></div>
                   <span>Updating...</span>
+                </div>
+              ) : isUploading ? (
+                <div className='flex items-center gap-2'>
+                  <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-white'></div>
+                  <span>Uploading Image...</span>
                 </div>
               ) : (
                 'Update User'
@@ -365,24 +453,19 @@ const EditModal = ({
 }
 
 export default function UsersPage() {
+  const [users, setUsers] = useState<User[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [showViewModal, setShowViewModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
-  const [isUpdating, setIsUpdating] = useState(false)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
-  const [editFormData, setEditFormData] = useState<Partial<UserFormData>>({
-    name: '',
-    email: '',
-    phoneNumber: '',
-    image: null,
-    role: 'user',
-    status: 'active',
-    address: '',
-  })
-  const [users, setUsers] = useState<User[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+
+  // Temporary storage for profile image before upload
+  const [tempProfileImage, setTempProfileImage] = useState<File | null>(null)
+  const [tempProfilePreview, setTempProfilePreview] = useState<string>('')
 
   const [formData, setFormData] = useState<UserFormData>({
     name: '',
@@ -462,6 +545,8 @@ export default function UsersPage() {
     if (validateForm()) {
       try {
         setIsAdding(true)
+        setIsUploading(false)
+        
         // Check if email already exists
         const checkResponse = await fetch(`/api/admin/users/check-email?email=${encodeURIComponent(formData.email)}`)
         const { exists } = await checkResponse.json()
@@ -471,13 +556,39 @@ export default function UsersPage() {
           return
         }
 
-        // Create FormData for file upload
+        // Upload profile image to Vercel Blob if there's a temporary image
+        let imageUrl = formData.image as string || null
+        if (tempProfileImage) {
+          setIsUploading(true)
+          const formDataToUpload = new FormData()
+          formDataToUpload.append('file', tempProfileImage)
+          
+          const uploadResponse = await fetch('/api/upload/user-profile', {
+            method: 'POST',
+            body: formDataToUpload,
+          })
+          
+          if (!uploadResponse.ok) {
+            throw new Error('Failed to upload profile image')
+          }
+          
+          const uploadResult = await uploadResponse.json()
+          imageUrl = uploadResult.url
+          setIsUploading(false)
+        }
+
+        // Create FormData for user creation
         const formDataToSend = new FormData()
         Object.entries(formData).forEach(([key, value]) => {
-          if (value !== null && value !== undefined) {
+          if (value !== null && value !== undefined && key !== 'image') {
             formDataToSend.append(key, value)
           }
         })
+        
+        // Add the uploaded image URL
+        if (imageUrl) {
+          formDataToSend.append('image', imageUrl)
+        }
 
         const response = await fetch('/api/admin/users', {
           method: 'POST',
@@ -504,12 +615,20 @@ export default function UsersPage() {
           address: '',
         })
         setFormErrors({})
+        
+        // Clean up temporary image
+        if (tempProfileImage) {
+          setTempProfileImage(null)
+          setTempProfilePreview('')
+        }
+        
         toast.success('User created successfully')
       } catch (error) {
         console.error('Error creating user:', error)
         toast.error(error instanceof Error ? error.message : 'Failed to create user')
       } finally {
         setIsAdding(false)
+        setIsUploading(false)
       }
     }
   }
@@ -528,7 +647,7 @@ export default function UsersPage() {
     if (!selectedUser) return
 
     try {
-      // Create FormData for file upload
+      // Create FormData for user update
       const formDataToSend = new FormData()
       Object.entries(formData).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
@@ -562,13 +681,21 @@ export default function UsersPage() {
         method: 'DELETE',
       })
 
-      if (!response.ok) throw new Error('Failed to delete user')
+      const result = await response.json()
 
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete user')
+      }
+
+      // Remove from UI immediately
       setUsers(users.filter((user) => user.id !== id))
       toast.success('User deleted successfully')
+      
+      // Refresh data to ensure sync with database
+      await fetchUsers()
     } catch (error) {
       console.error('Error deleting user:', error)
-      toast.error('Failed to delete user')
+      toast.error(error instanceof Error ? error.message : 'Failed to delete user')
     } finally {
       setIsDeleting(null)
     }
@@ -760,6 +887,8 @@ export default function UsersPage() {
                   <ImageUpload
                     image={formData.image}
                     onImageChange={(file) => setFormData({ ...formData, image: file })}
+                    tempImage={tempProfileImage}
+                    onTempImageChange={(file) => setTempProfileImage(file)}
                     className="md:col-span-2"
                   />
 
@@ -971,17 +1100,26 @@ export default function UsersPage() {
                     Cancel
                   </Button>
                   <Button
+                    type="button"
                     onClick={handleAdd}
-                    disabled={isAdding}
-                    className='h-12 px-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+                    disabled={isAdding || isUploading}
+                    className="bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-xl font-semibold transition-colors"
                   >
                     {isAdding ? (
-                      <div className='flex items-center gap-2'>
-                        <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-white'></div>
-                        <span>Adding...</span>
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <span>Adding User...</span>
+                      </div>
+                    ) : isUploading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <span>Uploading Image...</span>
                       </div>
                     ) : (
-                      'Add User'
+                      <>
+                        <FiPlus className="mr-2 h-5 w-5" />
+                        Save Data
+                      </>
                     )}
                   </Button>
                 </div>
@@ -1002,6 +1140,9 @@ export default function UsersPage() {
                 <thead>
                   <tr className='border-b border-gray-200 dark:border-gray-700'>
                     <th className='text-left py-4 px-6 text-sm font-medium text-gray-500 dark:text-gray-400'>
+                      Profile
+                    </th>
+                    <th className='text-left py-4 px-6 text-sm font-medium text-gray-500 dark:text-gray-400'>
                       Name
                     </th>
                     <th className='text-left py-4 px-6 text-sm font-medium text-gray-500 dark:text-gray-400'>
@@ -1009,6 +1150,12 @@ export default function UsersPage() {
                     </th>
                     <th className='text-left py-4 px-6 text-sm font-medium text-gray-500 dark:text-gray-400'>
                       Phone
+                    </th>
+                    <th className='text-left py-4 px-6 text-sm font-medium text-gray-500 dark:text-gray-400'>
+                      Role
+                    </th>
+                    <th className='text-left py-4 px-6 text-sm font-medium text-gray-500 dark:text-gray-400'>
+                      Status
                     </th>
                     <th className='text-right py-4 px-6 text-sm font-medium text-gray-500 dark:text-gray-400'>
                       Actions
@@ -1023,13 +1170,26 @@ export default function UsersPage() {
                     >
                       <td className='py-4 px-6'>
                         <div className='flex items-center'>
-                          <div className='p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 mr-3'>
-                            <FiUser className='h-5 w-5' />
+                          <div className='relative w-12 h-12 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700'>
+                            {user.image ? (
+                              <Image
+                                src={user.image}
+                                alt={user.name}
+                                fill
+                                className='object-cover'
+                              />
+                            ) : (
+                              <div className='w-full h-full flex items-center justify-center text-gray-400'>
+                                <FiUser className='h-6 w-6' />
+                              </div>
+                            )}
                           </div>
-                          <span className='font-medium text-gray-900 dark:text-white'>
-                            {user.name}
-                          </span>
                         </div>
+                      </td>
+                      <td className='py-4 px-6'>
+                        <span className='font-medium text-gray-900 dark:text-white'>
+                          {user.name}
+                        </span>
                       </td>
                       <td className='py-4 px-6'>
                         <span className='text-gray-600 dark:text-gray-300'>
@@ -1039,6 +1199,36 @@ export default function UsersPage() {
                       <td className='py-4 px-6'>
                         <span className='text-gray-600 dark:text-gray-300'>
                           {user.profile?.phone || 'Not set'}
+                        </span>
+                      </td>
+                      <td className='py-4 px-6'>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          user.role === 'admin' 
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                            : user.role === 'manager'
+                            ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                            : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                        }`}>
+                          {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                        </span>
+                      </td>
+                      <td className='py-4 px-6'>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          user.status === 'active' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
+                        }`}>
+                          {user.status === 'active' ? (
+                            <>
+                              <FiCheck className='mr-1 h-3 w-3' />
+                              Active
+                            </>
+                          ) : (
+                            <>
+                              <FiXCircle className='mr-1 h-3 w-3' />
+                              Inactive
+                            </>
+                          )}
                         </span>
                       </td>
                       <td className='py-4 px-6'>
