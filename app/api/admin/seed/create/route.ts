@@ -357,9 +357,7 @@ export async function POST() {
             }
             return {
               productId,
-              smallAltPicture: item.small_alt_picture,
-              mediumAltPicture: item.medium_alt_picture,
-              largeAltPicture: item.large_alt_picture,
+              AltImage: item.medium_alt_picture,
               createdAt: new Date(),
               updatedAt: new Date()
             };

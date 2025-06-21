@@ -23,8 +23,8 @@ interface Product {
   type: string | null
   subType: string | null
   brand: string | null
-  sellingPrice: number
-  regularPrice: number
+  sellingPrice: string
+  regularPrice: string
   longDescription: string | null
   of7: string | null
   of12: string | null
@@ -51,9 +51,7 @@ interface Product {
   alternateImages: {
     id: number
     productId: number
-    smallAltPicture: string | null
-    mediumAltPicture: string | null
-    largeAltPicture: string | null
+    AltImage: string | null
     createdAt: Date | null
     updatedAt: Date | null
   }[]
